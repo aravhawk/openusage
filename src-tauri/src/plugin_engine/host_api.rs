@@ -13,10 +13,16 @@ pub fn inject_host_api<'js>(
 
     let app_obj = Object::new(ctx.clone())?;
     app_obj.set("version", "0.0.1")?;
-    app_obj.set("platform", "macos")?;
+    app_obj.set("platform", std::env::consts::OS)?;
     app_obj.set("appDataDir", app_data_dir.to_string_lossy().to_string())?;
     let plugin_data_dir = app_data_dir.join("plugins_data").join(plugin_id);
-    std::fs::create_dir_all(&plugin_data_dir).ok();
+    if let Err(err) = std::fs::create_dir_all(&plugin_data_dir) {
+        log::warn!(
+            "[plugin:{}] failed to create plugin data dir: {}",
+            plugin_id,
+            err
+        );
+    }
     app_obj.set(
         "pluginDataDir",
         plugin_data_dir.to_string_lossy().to_string(),
@@ -127,12 +133,20 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> 
                 let mut header_map = reqwest::header::HeaderMap::new();
                 if let Some(headers) = &req.headers {
                     for (key, val) in headers {
-                        if let (Ok(name), Ok(value)) = (
-                            reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-                            reqwest::header::HeaderValue::from_str(val),
-                        ) {
-                            header_map.insert(name, value);
-                        }
+                        let name = reqwest::header::HeaderName::from_bytes(key.as_bytes())
+                            .map_err(|e| {
+                                Exception::throw_message(
+                                    &ctx_inner,
+                                    &format!("invalid header name '{}': {}", key, e),
+                                )
+                            })?;
+                        let value = reqwest::header::HeaderValue::from_str(val).map_err(|e| {
+                            Exception::throw_message(
+                                &ctx_inner,
+                                &format!("invalid header value for '{}': {}", key, e),
+                            )
+                        })?;
+                        header_map.insert(name, value);
                     }
                 }
 
@@ -144,10 +158,13 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> 
                     .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))?;
 
                 let method = req.method.as_deref().unwrap_or("GET");
-                let mut builder = match method.to_uppercase().as_str() {
-                    "POST" => client.post(&req.url),
-                    _ => client.get(&req.url),
-                };
+                let method = reqwest::Method::from_bytes(method.as_bytes()).map_err(|e| {
+                    Exception::throw_message(
+                        &ctx_inner,
+                        &format!("invalid http method '{}': {}", method, e),
+                    )
+                })?;
+                let mut builder = client.request(method, &req.url);
                 builder = builder.headers(header_map);
                 if let Some(body) = req.body_text {
                     builder = builder.body(body);
@@ -158,12 +175,19 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> 
                     .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))?;
 
                 let status = response.status().as_u16();
-                let resp_headers: std::collections::HashMap<String, String> = response
-                    .headers()
-                    .iter()
-                    .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
-                    .collect();
-                let body = response.text().unwrap_or_default();
+                let mut resp_headers = std::collections::HashMap::new();
+                for (key, value) in response.headers().iter() {
+                    let header_value = value.to_str().map_err(|e| {
+                        Exception::throw_message(
+                            &ctx_inner,
+                            &format!("invalid response header '{}': {}", key, e),
+                        )
+                    })?;
+                    resp_headers.insert(key.to_string(), header_value.to_string());
+                }
+                let body = response
+                    .text()
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))?;
 
                 let resp = HttpRespParams {
                     status,
@@ -186,7 +210,7 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> 
         "#
         .as_bytes(),
     )
-    .ok();
+    .map_err(|e| Exception::throw_message(ctx, &format!("http wrapper init failed: {}", e)))?;
 
     host.set("http", http_obj)?;
     Ok(())
@@ -240,6 +264,12 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, service: String| -> rquickjs::Result<String> {
+                if !cfg!(target_os = "macos") {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "keychain API is only supported on macOS",
+                    ));
+                }
                 let output = std::process::Command::new("security")
                     .args(["find-generic-password", "-s", &service, "-w"])
                     .output()
@@ -275,9 +305,15 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, db_path: String, sql: String| -> rquickjs::Result<String> {
+                if sql.trim_start().starts_with('.') {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "sqlite3 dot-commands are not allowed",
+                    ));
+                }
                 let expanded = expand_path(&db_path);
                 let output = std::process::Command::new("sqlite3")
-                    .args(["-json", &expanded, &sql])
+                    .args(["-readonly", "-json", &expanded, &sql])
                     .output()
                     .map_err(|e| {
                         Exception::throw_message(
@@ -304,15 +340,20 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
 }
 
 fn iso_now() -> String {
-    use std::time::SystemTime;
-    let secs = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    format!("{}Z", secs)
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|err| {
+            log::error!("nowIso format failed: {}", err);
+            "1970-01-01T00:00:00Z".to_string()
+        })
 }
 
 fn expand_path(path: &str) -> String {
+    if path == "~" {
+        if let Some(home) = dirs::home_dir() {
+            return home.to_string_lossy().to_string();
+        }
+    }
     if path.starts_with("~/") {
         if let Some(home) = dirs::home_dir() {
             return home.join(&path[2..]).to_string_lossy().to_string();

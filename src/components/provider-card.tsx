@@ -17,6 +17,10 @@ function formatNumber(value: number) {
 
 function formatProgressValue(value: number, unit?: "percent" | "dollars") {
   if (unit === "percent") {
+    if (!Number.isFinite(value) || value < 0) {
+      console.error("Invalid percent value for progress:", value)
+      return "N/A"
+    }
     return `${Math.round(value)}%`
   }
   if (unit === "dollars") {

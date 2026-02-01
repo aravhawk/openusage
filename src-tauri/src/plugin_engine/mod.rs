@@ -17,7 +17,9 @@ pub fn initialize_plugins(
     }
 
     let install_dir = app_data_dir.join("plugins");
-    std::fs::create_dir_all(&install_dir).ok();
+    if let Err(err) = std::fs::create_dir_all(&install_dir) {
+        log::warn!("failed to create install dir {}: {}", install_dir.display(), err);
+    }
 
     if is_dir_empty(&install_dir) {
         let bundled_dir = resolve_bundled_dir(resource_dir);
@@ -53,25 +55,62 @@ fn resolve_bundled_dir(resource_dir: &Path) -> PathBuf {
 }
 
 fn is_dir_empty(path: &Path) -> bool {
-    std::fs::read_dir(path)
-        .map(|mut d| d.next().is_none())
-        .unwrap_or(true)
+    match std::fs::read_dir(path) {
+        Ok(mut entries) => entries.next().is_none(),
+        Err(err) => {
+            log::warn!("failed to read dir {}: {}", path.display(), err);
+            true
+        }
+    }
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) {
     match std::fs::read_dir(src) {
         Ok(entries) => {
-            for entry in entries.flatten() {
+            for entry in entries {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(err) => {
+                        log::warn!("failed to read entry in {}: {}", src.display(), err);
+                        continue;
+                    }
+                };
                 let src_path = entry.path();
                 let dst_path = dst.join(entry.file_name());
-                if src_path.is_dir() {
-                    std::fs::create_dir_all(&dst_path).ok();
+                let file_type = match entry.file_type() {
+                    Ok(file_type) => file_type,
+                    Err(err) => {
+                        log::warn!("failed to read file type for {}: {}", src_path.display(), err);
+                        continue;
+                    }
+                };
+                if file_type.is_symlink() {
+                    continue;
+                }
+                if file_type.is_dir() {
+                    if let Err(err) = std::fs::create_dir_all(&dst_path) {
+                        log::warn!(
+                            "failed to create dir {}: {}",
+                            dst_path.display(),
+                            err
+                        );
+                        continue;
+                    }
                     copy_dir_recursive(&src_path, &dst_path);
-                } else {
-                    std::fs::copy(&src_path, &dst_path).ok();
+                } else if file_type.is_file() {
+                    if let Err(err) = std::fs::copy(&src_path, &dst_path) {
+                        log::warn!(
+                            "failed to copy {} to {}: {}",
+                            src_path.display(),
+                            dst_path.display(),
+                            err
+                        );
+                    }
                 }
             }
         }
-        Err(_) => {}
+        Err(err) => {
+            log::warn!("failed to read dir {}: {}", src.display(), err);
+        }
     }
 }

@@ -36,7 +36,7 @@ Plugins are evaluated in a Rust-side QuickJS sandbox. Each plugin must set:
 globalThis.__openusage_plugin = { id: "plugin-id", probe }
 ```
 
-`probe(ctx)` runs synchronously and must return:
+`probe(ctx)` runs synchronously and must return (or resolve to):
 
 ```js
 { lines: MetricLine[] }
@@ -56,7 +56,7 @@ type MetricLine =
 Notes:
 - `color` is an optional hex string like `#000000` or `#22c55e`.
 - Progress uses `value` and `max`; the UI computes the percent.
-- `unit` controls value formatting: `"percent"` shows `X%`, `"dollars"` shows `$X.XX`. Without `unit`, shows `value/max`.
+- `unit` controls value formatting: `"percent"` shows `X%`, `"dollars"` shows `$X.XX`. Without `unit`, shows `value` only.
 - The UI is always two columns: label on the left, value on the right.
 
 ## Context object
@@ -68,7 +68,7 @@ type ProbeContext = {
   nowIso: string
   app: {
     version: string
-    platform: "macos"
+    platform: string
     appDataDir: string
     pluginDataDir: string
   }
@@ -102,7 +102,7 @@ Notes:
 
 ```ts
 host.http.request({
-  method: "GET" | "POST",
+  method: string,
   url: string,
   headers?: Record<string, string>,
   bodyText?: string,
@@ -117,12 +117,16 @@ host.http.request({
 Notes:
 - No domain allowlist currently enforced.
 - Redirects are disabled in the host HTTP client.
+- Invalid HTTP method or headers throw.
 
 ### Keychain (macOS)
 
 ```ts
 host.keychain.readGenericPassword(service: string): string
 ```
+
+Notes:
+- Only available on macOS; other platforms throw.
 
 ### SQLite
 
@@ -131,7 +135,8 @@ host.sqlite.query(dbPath: string, sql: string): string
 ```
 
 Notes:
-- Executes `sqlite3 -json` and returns the raw JSON string.
+- Executes `sqlite3 -readonly -json` and returns the raw JSON string.
+- Dot-commands (e.g. `.schema`) are blocked.
 
 ## Execution timing
 

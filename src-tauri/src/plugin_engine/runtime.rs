@@ -1,6 +1,6 @@
 use crate::plugin_engine::host_api;
 use crate::plugin_engine::manifest::LoadedPlugin;
-use rquickjs::{Array, Context, Object, Runtime, Value};
+use rquickjs::{Array, Context, Error, Object, Promise, Runtime, Value};
 use serde::Serialize;
 use std::path::PathBuf;
 
@@ -79,9 +79,27 @@ pub fn run_probe(plugin: &LoadedPlugin, app_data_dir: &PathBuf) -> PluginOutput 
             .get("__openusage_ctx")
             .unwrap_or_else(|_| Value::new_undefined(ctx.clone()));
 
-        let result: Object = match probe_fn.call((probe_ctx,)) {
+        let result_value: Value = match probe_fn.call((probe_ctx,)) {
             Ok(r) => r,
             Err(_) => return error_output(plugin, "probe() failed".to_string()),
+        };
+        let result: Object = if result_value.is_promise() {
+            let promise: Promise = match result_value.into_promise() {
+                Some(promise) => promise,
+                None => return error_output(plugin, "probe() returned invalid promise".to_string()),
+            };
+            match promise.finish::<Object>() {
+                Ok(obj) => obj,
+                Err(Error::WouldBlock) => {
+                    return error_output(plugin, "probe() returned unresolved promise".to_string())
+                }
+                Err(_) => return error_output(plugin, "probe() promise rejected".to_string()),
+            }
+        } else {
+            match result_value.into_object() {
+                Some(obj) => obj,
+                None => return error_output(plugin, "probe() returned non-object".to_string()),
+            }
         };
 
         let lines = match parse_lines(&result) {
@@ -127,8 +145,18 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                 out.push(MetricLine::Text { label, value, color });
             }
             "progress" => {
-                let value = line.get::<_, f64>("value").unwrap_or(0.0);
-                let max = line.get::<_, f64>("max").unwrap_or(0.0);
+                let mut value = line.get::<_, f64>("value").unwrap_or(0.0);
+                let mut max = line.get::<_, f64>("max").unwrap_or(0.0);
+                if !value.is_finite() || !max.is_finite() {
+                    log::error!(
+                        "invalid progress values at index {} (value={}, max={})",
+                        idx,
+                        value,
+                        max
+                    );
+                    value = -1.0;
+                    max = 0.0;
+                }
                 let unit = line.get::<_, String>("unit").ok();
                 out.push(MetricLine::Progress {
                     label,

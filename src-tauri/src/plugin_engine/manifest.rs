@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,8 +50,24 @@ fn load_single_plugin(
     let manifest_text = std::fs::read_to_string(&manifest_path)?;
     let manifest: PluginManifest = serde_json::from_str(&manifest_text)?;
 
+    if manifest.entry.trim().is_empty() {
+        return Err("plugin entry field cannot be empty".into());
+    }
+    if Path::new(&manifest.entry).is_absolute() {
+        return Err("plugin entry must be a relative path".into());
+    }
+
     let entry_path = plugin_dir.join(&manifest.entry);
-    let entry_script = std::fs::read_to_string(&entry_path)?;
+    let canonical_plugin_dir = plugin_dir.canonicalize()?;
+    let canonical_entry_path = entry_path.canonicalize()?;
+    if !canonical_entry_path.starts_with(&canonical_plugin_dir) {
+        return Err("plugin entry must remain within plugin directory".into());
+    }
+    if !canonical_entry_path.is_file() {
+        return Err("plugin entry must be a file".into());
+    }
+
+    let entry_script = std::fs::read_to_string(&canonical_entry_path)?;
 
     Ok(LoadedPlugin {
         manifest,

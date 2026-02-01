@@ -133,7 +133,7 @@
       lineProgress("Plan usage", dollarsFromCents(pu.totalSpend), dollarsFromCents(pu.limit), "dollars")
     )
 
-    if (pu.bonusSpend > 0 || pu.remainingBonus) {
+    if (typeof pu.bonusSpend === "number" && pu.bonusSpend > 0) {
       lines.push(lineText("Bonus spend", "$" + String(dollarsFromCents(pu.bonusSpend))))
     }
 

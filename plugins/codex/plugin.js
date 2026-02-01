@@ -107,13 +107,12 @@
     })
   }
 
-  function dollars(n) {
-    const rounded = Math.round(n * 100) / 100
-    if (rounded === Math.floor(rounded)) return "$" + String(rounded)
-    return "$" + rounded.toFixed(2)
+  function readPercent(value) {
+    const n = Number(value)
+    return Number.isFinite(n) ? n : null
   }
 
-  function readPercent(value) {
+  function readNumber(value) {
     const n = Number(value)
     return Number.isFinite(n) ? n : null
   }
@@ -195,10 +194,14 @@
       }
 
       const creditsBalance = resp.headers["x-codex-credits-balance"]
-      if (creditsBalance) {
-        lines.push(lineProgress("Credits", Number(creditsBalance), 1000))
-      } else if (data.credits && data.credits.balance !== undefined) {
-        lines.push(lineProgress("Credits", data.credits.balance, 1000))
+      const creditsHeader = readNumber(creditsBalance)
+      const creditsData = data.credits ? readNumber(data.credits.balance) : null
+      if (creditsHeader !== null) {
+        lines.push(lineProgress("Credits", creditsHeader, 1000))
+      } else if (creditsData !== null) {
+        lines.push(lineProgress("Credits", creditsData, 1000))
+      } else if (creditsBalance || (data.credits && data.credits.balance !== undefined)) {
+        ctx.host.log.warn("invalid credits balance; skipping credits line")
       }
 
       if (data.plan_type) {
