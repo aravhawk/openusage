@@ -49,13 +49,14 @@ If a plugin throws or returns malformed output, the host will return a single `b
 ```ts
 type MetricLine =
   | { type: "text"; label: string; value: string; color?: string }
-  | { type: "progress"; label: string; value: number; max: number; color?: string }
+  | { type: "progress"; label: string; value: number; max: number; unit?: "percent" | "dollars"; color?: string }
   | { type: "badge"; label: string; text: string; color?: string }
 ```
 
 Notes:
 - `color` is an optional hex string like `#000000` or `#22c55e`.
 - Progress uses `value` and `max`; the UI computes the percent.
+- `unit` controls value formatting: `"percent"` shows `X%`, `"dollars"` shows `$X.XX`. Without `unit`, shows `value/max`.
 - The UI is always two columns: label on the left, value on the right.
 
 ## Context object

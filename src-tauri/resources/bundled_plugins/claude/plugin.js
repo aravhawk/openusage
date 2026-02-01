@@ -9,8 +9,9 @@
     return line
   }
 
-  function lineProgress(label, value, max, color) {
+  function lineProgress(label, value, max, unit, color) {
     const line = { type: "progress", label, value, max }
+    if (unit) line.unit = unit
     if (color) line.color = color
     return line
   }
@@ -107,13 +108,13 @@
     }
 
     if (data.five_hour && typeof data.five_hour.utilization === "number") {
-      lines.push(lineProgress("5h usage", data.five_hour.utilization, 100))
+      lines.push(lineProgress("Session (5h)", data.five_hour.utilization, 100, "percent"))
     }
     if (data.seven_day && typeof data.seven_day.utilization === "number") {
-      lines.push(lineProgress("7d usage", data.seven_day.utilization, 100))
+      lines.push(lineProgress("Weekly (7d)", data.seven_day.utilization, 100, "percent"))
     }
     if (data.seven_day_opus && typeof data.seven_day_opus.utilization === "number") {
-      lines.push(lineProgress("7d opus", data.seven_day_opus.utilization, 100))
+      lines.push(lineProgress("Opus (7d)", data.seven_day_opus.utilization, 100, "percent"))
     }
 
     if (data.extra_usage && data.extra_usage.is_enabled) {
@@ -121,7 +122,7 @@
       const limit = data.extra_usage.monthly_limit
       if (typeof used === "number" && typeof limit === "number" && limit > 0) {
         lines.push(
-          lineProgress("Extra usage ($)", dollarsFromCents(used), dollarsFromCents(limit))
+          lineProgress("Extra usage", dollarsFromCents(used), dollarsFromCents(limit), "dollars")
         )
       } else if (typeof used === "number" && used > 0) {
         lines.push(lineText("Extra usage", "$" + String(dollarsFromCents(used))))

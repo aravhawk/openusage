@@ -11,8 +11,9 @@
     return line
   }
 
-  function lineProgress(label, value, max, color) {
+  function lineProgress(label, value, max, unit, color) {
     const line = { type: "progress", label, value, max }
+    if (unit) line.unit = unit
     if (color) line.color = color
     return line
   }
@@ -171,33 +172,33 @@
       const headerSecondary = readPercent(resp.headers["x-codex-secondary-used-percent"])
 
       if (headerPrimary !== null) {
-        lines.push(lineProgress("5h usage", headerPrimary, 100))
+        lines.push(lineProgress("Session (5h)", headerPrimary, 100, "percent"))
       }
       if (headerSecondary !== null) {
-        lines.push(lineProgress("7d usage", headerSecondary, 100))
+        lines.push(lineProgress("Weekly (7d)", headerSecondary, 100, "percent"))
       }
 
       if (lines.length === 0 && data.rate_limit) {
         if (data.rate_limit.primary_window && typeof data.rate_limit.primary_window.used_percent === "number") {
-          lines.push(lineProgress("5h usage", data.rate_limit.primary_window.used_percent, 100))
+          lines.push(lineProgress("Session (5h)", data.rate_limit.primary_window.used_percent, 100, "percent"))
         }
         if (data.rate_limit.secondary_window && typeof data.rate_limit.secondary_window.used_percent === "number") {
-          lines.push(lineProgress("7d usage", data.rate_limit.secondary_window.used_percent, 100))
+          lines.push(lineProgress("Weekly (7d)", data.rate_limit.secondary_window.used_percent, 100, "percent"))
         }
       }
 
       if (data.code_review_rate_limit && data.code_review_rate_limit.primary_window) {
         const used = data.code_review_rate_limit.primary_window.used_percent
         if (typeof used === "number") {
-          lines.push(lineProgress("Review usage", used, 100))
+          lines.push(lineProgress("Reviews (7d)", used, 100, "percent"))
         }
       }
 
       const creditsBalance = resp.headers["x-codex-credits-balance"]
       if (creditsBalance) {
-        lines.push(lineText("Credits", dollars(Number(creditsBalance))))
+        lines.push(lineProgress("Credits", Number(creditsBalance), 1000))
       } else if (data.credits && data.credits.balance !== undefined) {
-        lines.push(lineText("Credits", dollars(data.credits.balance)))
+        lines.push(lineProgress("Credits", data.credits.balance, 1000))
       }
 
       if (data.plan_type) {

@@ -11,8 +11,9 @@
     return line
   }
 
-  function lineProgress(label, value, max, color) {
+  function lineProgress(label, value, max, unit, color) {
     const line = { type: "progress", label, value, max }
+    if (unit) line.unit = unit
     if (color) line.color = color
     return line
   }
@@ -129,7 +130,7 @@
 
     const pu = usage.planUsage
     lines.push(
-      lineProgress("Plan usage ($)", dollarsFromCents(pu.totalSpend), dollarsFromCents(pu.limit))
+      lineProgress("Plan usage", dollarsFromCents(pu.totalSpend), dollarsFromCents(pu.limit), "dollars")
     )
 
     if (pu.bonusSpend > 0 || pu.remainingBonus) {
@@ -143,7 +144,7 @@
       if (limit > 0) {
         const used = limit - remaining
         lines.push(
-          lineProgress("On-demand ($)", dollarsFromCents(used), dollarsFromCents(limit))
+          lineProgress("On-demand", dollarsFromCents(used), dollarsFromCents(limit), "dollars")
         )
       }
     }

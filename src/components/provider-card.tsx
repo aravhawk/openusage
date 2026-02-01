@@ -15,8 +15,14 @@ function formatNumber(value: number) {
   return value.toFixed(2)
 }
 
-function formatProgressValue(value: number, max: number) {
-  return `${formatNumber(value)}/${formatNumber(max)}`
+function formatProgressValue(value: number, unit?: "percent" | "dollars") {
+  if (unit === "percent") {
+    return `${Math.round(value)}%`
+  }
+  if (unit === "dollars") {
+    return `$${formatNumber(value)}`
+  }
+  return formatNumber(value)
 }
 
 function getProgressPercent(value: number, max: number) {
@@ -36,7 +42,7 @@ export function ProviderCard({ name, lines, showSeparator = true }: ProviderCard
                 <div key={`${line.label}-${index}`} className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">{line.label}</span>
                   <span
-                    className="text-sm font-medium"
+                    className="text-sm text-muted-foreground"
                     style={line.color ? { color: line.color } : undefined}
                   >
                     {line.value}
@@ -69,8 +75,8 @@ export function ProviderCard({ name, lines, showSeparator = true }: ProviderCard
                 <div key={`${line.label}-${index}`} className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">{line.label}</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium tabular-nums">
-                      {formatProgressValue(line.value, line.max)}
+                    <span className="text-sm tabular-nums text-muted-foreground">
+                      {formatProgressValue(line.value, line.unit)}
                     </span>
                     <Progress
                       className="w-24"

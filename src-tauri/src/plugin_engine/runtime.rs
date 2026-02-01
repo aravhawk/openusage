@@ -16,6 +16,7 @@ pub enum MetricLine {
         label: String,
         value: f64,
         max: f64,
+        unit: Option<String>,
         color: Option<String>,
     },
     Badge {
@@ -128,10 +129,12 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
             "progress" => {
                 let value = line.get::<_, f64>("value").unwrap_or(0.0);
                 let max = line.get::<_, f64>("max").unwrap_or(0.0);
+                let unit = line.get::<_, String>("unit").ok();
                 out.push(MetricLine::Progress {
                     label,
                     value,
                     max,
+                    unit,
                     color,
                 });
             }
